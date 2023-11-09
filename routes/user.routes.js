@@ -9,21 +9,21 @@ const {
   updateUser,
 } = require('../controller/user.controller.js');
 
-const { createUserValidationRules,
-  ValidationRulesForupdate ,
- ValidationRulesForGetbyId,
- ValidationRulesFordeletebyId,
- handleValidationErrors}
-= require('../controller/user.validater.js');
+const {
+  createUserValidationRules,
+  ValidationRulesForupdate,
+  ValidationRulesForGetbyId,
+  ValidationRulesFordeletebyId,
+} = require('../controller/user.validater.js');
 
 router.get('/', getAllUsers);
 
-router.post('/', createUserValidationRules,handleValidationErrors,createUser,);
+router.post('/', createUserValidationRules(), createUser);
 
-router.get('/:id', getUserById,ValidationRulesForGetbyId);
+router.get('/:id', ValidationRulesForGetbyId(), getUserById);
 
-router.patch('/:id', updateUser,ValidationRulesForupdate);
+router.patch('/:id', ValidationRulesForupdate(), updateUser);
 
-router.delete('/:id', deleteUser,ValidationRulesFordeletebyId);
+router.delete('/:id', ValidationRulesFordeletebyId(), deleteUser);
 
 module.exports = router;

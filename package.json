@@ -1,9 +1,9 @@
 {
-  "name": "new-project",
+  "name": "node-express-starter",
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "start": "nodemon app.jS",
+    "start": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
