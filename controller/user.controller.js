@@ -1,3 +1,4 @@
+const { validationResult } = require("express-validator");
 const knex = require("../db");
 const UserModel = require("../db/models/User");
 
@@ -12,6 +13,8 @@ const getAllUsers = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
+  const errors = validationResult(req);
+  if(!errors.isEmpty())return res.status(400).json({ success: false, errors: errors.array() });
   try {
     let { first_name, last_name, email, password, phone_number } = req.body;
 
@@ -49,10 +52,47 @@ const getUserById = async (req, res) => {
   }
 };
 
-const deleteUser = async (req, res) => {};
+const deleteUser = async (req, res) => {
+  try 
+{
+const delUser = await knex(UserModel.tableName).where({ id: req.params.id }).del();
 
-const updateUser = async (req, res) => {};
+res.send(delUser +"user deleted")
 
+} 
+  catch (err) {
+  console.error("Error deleting user: \n", err);
+  res.status(500).json({ message: "Internal Server Error" });
+
+}
+
+
+};
+
+const updateUser = async (req, res) => {
+
+  
+  const { first_name, last_name, email, password, phone_number } = req.body;
+  const userId = req.params.id; 
+ 
+  try {
+   const updatedUser = await knex(UserModel.tableName)
+     .where({ id: userId })
+     .update({ first_name, last_name, email, password, phone_number })
+     .returning('*');
+   
+   if (updatedUser.length > 0) {
+     res.status(200).json({ success: true, user: updatedUser[0] });
+   } else { 
+     res.status(404).json({ success: false, message: 'User not found' });
+   }
+ 
+  } catch (error) {
+   console.error(error);
+   res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+ };
+ 
 module.exports = {
   getUserById,
   getAllUsers,
