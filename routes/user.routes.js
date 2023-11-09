@@ -9,14 +9,21 @@ const {
   updateUser,
 } = require('../controller/user.controller.js');
 
+const { createUserValidationRules,
+  ValidationRulesForupdate ,
+ ValidationRulesForGetbyId,
+ ValidationRulesFordeletebyId,
+ handleValidationErrors}
+= require('../controller/user.validater.js');
+
 router.get('/', getAllUsers);
 
-router.post('/', createUser);
+router.post('/', createUserValidationRules,handleValidationErrors,createUser,);
 
-router.get('/:id', getUserById);
+router.get('/:id', getUserById,ValidationRulesForGetbyId);
 
-router.patch('/:id', updateUser);
+router.patch('/:id', updateUser,ValidationRulesForupdate);
 
-router.delete('/:id', deleteUser);
+router.delete('/:id', deleteUser,ValidationRulesFordeletebyId);
 
 module.exports = router;
