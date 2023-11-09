@@ -18,12 +18,12 @@ const {
 
 router.get('/', getAllUsers);
 
-router.post('/', createUserValidationRules(), createUser);
+router.post('/',createUserValidationRules(), createUser);
 
-router.get('/:id', ValidationRulesForGetbyId(), getUserById);
+router.get('/:id',ValidationRulesForGetbyId(), getUserById);
 
-router.patch('/:id', ValidationRulesForupdate(), updateUser);
+router.patch('/:id',ValidationRulesForupdate(), updateUser);
 
-router.delete('/:id', ValidationRulesFordeletebyId(), deleteUser);
+router.delete('/:id',ValidationRulesFordeletebyId(), deleteUser);
 
 module.exports = router;
