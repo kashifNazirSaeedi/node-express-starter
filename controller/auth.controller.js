@@ -1,184 +1,207 @@
-const bcrypt = require('bcrypt');
-const { createHash } = require('crypto');
-const { validationResult, matchedData } = require('express-validator');
-const { generateToken, verifyToken } = require('../utils/tokenhandler.js');
-const DB = require('../db/models/User.js');
+const bcrypt = require("bcrypt");
+const { createHash } = require("crypto");
+const { validationResult, matchedData } = require("express-validator");
+const { generateToken, verifyToken } = require("../utils/tokenhandler.js");
+const knex = require("../db");
+const UserModel = require("../db/models/User");
 
 const validation_result = validationResult.withDefaults({
-    formatter: (error) => error.msg,
+  formatter: (error) => error.msg,
 });
 
 const validate = (req, res, next) => {
-    const errors = validation_result(req).mapped();
-    if (Object.keys(errors).length) {
-        return res.status(422).json({
-            status: 422,
-            errors,
-        });
-    }
-    next();
+  const errors = validation_result(req).mapped();
+  console.log(req.body);
+  if (Object.keys(errors).length) {
+    return res.status(422).json({
+      status: 422,
+      errors,
+    });
+  }
+  next();
 };
 
-// If email already exists in the database
-const fetchUserByEmailOrID = async (data, isEmail = true) => {
-    let sql = 'SELECT * FROM `users` WHERE `email`=$1';
-    if (!isEmail)
-        sql = 'SELECT `id` ,`first_name`, `email` FROM `users` WHERE `id`=$1';
-    const [row] = await DB.query(sql, [data]);
-    return row;
-};
+async function fetchUserByEmailOrID(data, isEmail = true) {
+  return knex(UserModel.tableName)
+    .select(isEmail ? "*" : ["id", "first_name", "email"])
+    .where(isEmail ? { email: data } : { id: data })
+    .first();
+}
 
 const signup = async (req, res, next) => {
-    try {
-        const { first_name, email, password } = matchedData(req);
+  const result = validationResult(req);
+  if (!result.isEmpty()) {
+    return res.send({ errors: result.array() });
+  }
 
-        const saltRounds = 10;
-        // Hash the password
-        const hashPassword = await bcrypt.hash(password, saltRounds);
+  try {
+    const { first_name, last_name, email, password, phone_number } = req.body;
 
-        // Store user data in the database
-        const [result] = await DB.execute(
-            'INSERT INTO `users` (`first_name`,`email`,`password`) VALUES ($1, $2, $3)',
-            [first_name, email, hashPassword]
-        );
-        res.status(201).json({
-            status: 201,
-            message: 'You have been successfully registered.',
-            user_id: result.insertId,
-        });
-    } catch (err) {
-        next(err);
+    const emailExists = await knex(UserModel.tableName)
+      .where({ email })
+      .first();
+
+    if (emailExists) {
+      return res
+        .status(400)
+        .json({ message: `email already exists: ${email}` });
     }
+
+    const saltRounds = 10;
+    const hashPassword = await bcrypt.hash(password, saltRounds);
+
+    const [newUser] = await knex(UserModel.tableName)
+      .insert({
+        first_name,
+        last_name,
+        email,
+        password: hashPassword,
+        phone_number,
+      })
+      .returning("*");
+
+    return res.status(200).json({ userId: newUser.id });
+    //
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      status: 500,
+      message: "xyz",
+      user_id: null,
+    });
+  }
 };
+
 const login = async (req, res, next) => {
-    try {
-        const { email, password } = req.body;
-        const user = await fetchUserByEmailOrID(email);
-
-        if (!user) {
-            return res.status(422).json({
-                status: 422,
-                message: 'Incorrect email!',
-            });
-        }
-
-        const verifyPassword = await bcrypt.compare(password, user.password);
-
-        if (!verifyPassword) {
-            return res.status(422).json({
-                status: 422,
-                message: 'Incorrect password!',
-            });
-        }
-
-        // Generating Access and Refresh Token
-        const access_token = generateToken({ id: user.id });
-        const refresh_token = generateToken({ id: user.id }, false);
-
-        const md5Refresh = createHash('md5')
-            .update(refresh_token)
-            .digest('hex');
-
-        // Storing refresh token in MD5 format
-        const [result] = await DB.execute(
-            'INSERT INTO `refresh_tokens` (`user_id`,`token`) VALUES ($1, $2)',
-            [user.id, md5Refresh]
-        );
-
-        if (!result.affectedRows) {
-            throw new Error('Failed to whitelist the refresh token.');
-        }
-
-        res.json({
-            status: 200,
-            access_token,
-            refresh_token,
-        });
-    } catch (err) {
-        next(err);
+  try {
+    const { email, password } = req.body;
+    const user = await fetchUserByEmailOrID(email);
+    if (!user) {
+      return res.status(421).json({
+        status: 421,
+        message: "Incorrect email!",
+      });
     }
+
+    const verifyPassword = await bcrypt.compare(password, user.password);
+    console.log(password + "  " + user.password + "  " + verifyPassword);
+
+    if (password != user.password) {
+      return res.status(422).json({
+        status: 422,
+        message: "Incorrect password!",
+      });
+    }
+
+    /////////////////////////////////////
+
+    const access_token = generateToken({ id: user.id });
+    const refresh_token = generateToken({ id: user.id }, false);
+
+    const md5Refresh = createHash("md5").update(refresh_token).digest("hex");
+
+    // Log the md5Refresh to the console for debugging
+    console.log("MD5 Refresh Token:", md5Refresh);
+
+    // Save the refresh token to the database
+    const [result] = await knex("refresh_tokens").insert({
+      user_id: user.id,
+      token: md5Refresh,
+    });
+
+    if (!result) {
+      throw new Error("Failed to whitelist the refresh token.");
+    }
+
+    // Log success to the console for debugging
+    console.log("Login successful");
+
+    // Continue with the next middleware
+    next();
+  } catch (err) {
+    next(err);
+  }
 };
 
 const getUser = async (req, res, next) => {
-    try {
-        // Verify the access token
-        const data = verifyToken(req.headers.access_token);
-        if (data?.status) return res.status(data.status).json(data);
-        // fetching user by the `id` (column)
-        const user = await fetchUserByEmailOrID(data.id, false);
-        if (!user) {
-            return res.status(404).json({
-                status: 404,
-                message: 'User not found',
-            });
-        }
-        res.json({
-            status: 200,
-            user,
-        });
-    } catch (err) {
-        next(err);
+  try {
+    const accessToken = req.headers.access_token;
+    const data = verifyToken(accessToken);
+
+    if (data?.status) return res.status(data.status).json(data);
+
+    const user = await fetchUserByEmailOrID(data.id, false);
+
+    if (!user) {
+      return res.status(404).json({
+        status: 404,
+        message: "User not found",
+      });
     }
+
+    res.json({
+      status: 200,
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 const refreshToken = async (req, res, next) => {
-    try {
-        const refreshToken = req.headers.refresh_token;
-        // Verify the refresh token
-        const data = verifyToken(refreshToken, false);
-        if (data?.status) return res.status(data.status).json(data);
+  try {
+    const refreshToken = req.headers.refresh_token;
 
-        // Converting refresh token to md5 format
-        const md5Refresh = createHash('md5')
-            .update(refreshToken)
-            .digest('hex');
+    // Verify the refresh token
+    const data = verifyToken(refreshToken, false);
 
-        // Finding the refresh token in the database
-        const [refTokenRow] = await DB.execute(
-            'SELECT * from `refresh_tokens` WHERE token=$1',
-            [md5Refresh]
-        );
+    if (data?.status) return res.status(data.status).json(data);
 
-        if (!refTokenRow.length) {
-            return res.json({
-                status: 401,
-                message: 'Unauthorized: Invalid Refresh Token.',
-            });
-        }
+    // Converting refresh token to md5 format
+    const md5Refresh = createHash("md5").update(refreshToken).digest("hex");
 
-        // Generating new access and refresh token
-        const access_token = generateToken({ id: data.id });
-        const refresh_token = generateToken({ id: data.id }, false);
+    // Finding the refresh token in the database
+    const [refTokenRow] = await knex("refresh_tokens")
+      .select("*")
+      .where({ token: md5Refresh });
 
-        const newMd5Refresh = createHash('md5')
-            .update(refresh_token)
-            .digest('hex');
-
-        // Replacing the old refresh token with the new refresh token
-        const [result] = await DB.execute(
-            'UPDATE `refresh_tokens` SET `token`=$1 WHERE `token`=$2',
-            [newMd5Refresh, md5Refresh]
-        );
-
-        if (!result.affectedRows) {
-            throw new Error('Failed to whitelist the Refresh token.');
-        }
-
-        res.json({
-            status: 200,
-            access_token,
-            refresh_token,
-        });
-    } catch (err) {
-        next(err);
+    if (!refTokenRow.length) {
+      return res.json({
+        status: 401,
+        message: "Unauthorized: Invalid Refresh Token.",
+      });
     }
+
+    // Generating new access and refresh token
+    const access_token = generateToken({ id: data.id });
+    const refresh_token = generateToken({ id: data.id }, false);
+
+    const newMd5Refresh = createHash("md5").update(refresh_token).digest("hex");
+
+    // Replacing the old refresh token with the new refresh token
+    const [result] = await knex("refresh_tokens")
+      .where({ token: md5Refresh })
+      .update({ token: newMd5Refresh });
+
+    if (!result) {
+      throw new Error("Failed to whitelist the Refresh token.");
+    }
+
+    res.json({
+      status: 200,
+      access_token,
+      refresh_token,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 module.exports = {
-    validate,
-    fetchUserByEmailOrID,
-    login,
-    signup,
-    getUser,
-    refreshToken,
+  validate,
+  fetchUserByEmailOrID,
+  login,
+  signup,
+  getUser,
+  refreshToken,
 };
