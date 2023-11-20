@@ -2,28 +2,25 @@ const express = require('express');
 const router = express.Router();
 
 const {
-  getUserById,
-  getAllUsers,
   createUser,
   deleteUser,
   updateUser,
+  getUserById,
+  getAllUsers,
 } = require('../controller/user.controller.js');
 
 const {
-  createUserValidationRules,
-  ValidationRulesForupdate,
-  ValidationRulesForGetbyId,
-  ValidationRulesFordeletebyId,
+  createUserValidation,
+  updateUserValidation,
+  getUserByIdValidation,
+  deleteUserByIdValidation,
 } = require('../validation/user.validation.js');
+const { verifyValidationResult } = require('../validation/index.validation.js');
 
 router.get('/', getAllUsers);
-
-router.post('/', createUserValidationRules(), createUser);
-
-router.get('/:id', ValidationRulesForGetbyId(), getUserById);
-
-router.patch('/:id', ValidationRulesForupdate(), updateUser);
-
-router.delete('/:id', ValidationRulesFordeletebyId(), deleteUser);
+router.post('/', createUserValidation(), verifyValidationResult, createUser);
+router.get('/:id', getUserByIdValidation(), verifyValidationResult, getUserById);
+router.patch('/:id', updateUserValidation(), verifyValidationResult, updateUser);
+// router.delete('/:id', deleteUserByIdValidation(), verifyValidationResult, deleteUser);
 
 module.exports = router;
