@@ -1,4 +1,4 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
 
 const {
@@ -7,23 +7,23 @@ const {
   createUser,
   deleteUser,
   updateUser,
-} = require("../controller/user.controller.js");
+} = require('../controller/user.controller.js');
 
 const {
   createUserValidationRules,
   ValidationRulesForupdate,
   ValidationRulesForGetbyId,
   ValidationRulesFordeletebyId,
-} = require("../validation/user.validater.js");
+} = require('../validation/user.validation.js');
 
-router.get("/", getAllUsers);
+router.get('/', getAllUsers);
 
-router.post("/", createUserValidationRules(), createUser);
+router.post('/', createUserValidationRules(), createUser);
 
-router.get("/:id", ValidationRulesForGetbyId(), getUserById);
+router.get('/:id', ValidationRulesForGetbyId(), getUserById);
 
-router.patch("/:id", ValidationRulesForupdate(), updateUser);
+router.patch('/:id', ValidationRulesForupdate(), updateUser);
 
-router.delete("/:id", ValidationRulesFordeletebyId(), deleteUser);
+router.delete('/:id', ValidationRulesFordeletebyId(), deleteUser);
 
 module.exports = router;
