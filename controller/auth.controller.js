@@ -1,8 +1,8 @@
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-const knex = require("../db");
-const UserModel = require("../db/models/User");
+const knex = require('../db');
+const UserModel = require('../db/models/User');
 const { JWT_SECRET, JWT_EXPIRY } = process.env;
 
 const login = async (req, res) => {
@@ -16,7 +16,7 @@ const login = async (req, res) => {
     if (!user || !IsValidPassword) {
       return res.status(401).json({
         status: 401,
-        message: "wrong credentials",
+        message: 'wrong credentials',
       });
     }
     const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
@@ -30,9 +30,7 @@ const login = async (req, res) => {
     //
   } catch (error) {
     console.error(error);
-    return res
-      .status(500)
-      .json({ status: 500, message: "Internal Server Error" });
+    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
   }
 };
 
@@ -40,19 +38,17 @@ const signup = async (req, res) => {
   try {
     const { email, password, first_name, last_name, phone_number } = req.body;
 
-    const existingUser = await knex(UserModel.tableName)
-      .where({ email })
-      .first();
+    const existingUser = await knex(UserModel.tableName).where({ email }).first();
 
     if (existingUser) {
       return res.status(400).json({
         status: 400,
-        message: "User with this email already exists",
+        message: 'User with this email already exists',
       });
     }
     const hashPassword = await bcrypt.hash(password, 10);
 
-    const [userId] = await knex(UserModel.tableName).insert({
+    await knex(UserModel.tableName).insert({
       email,
       password: hashPassword,
       first_name,
@@ -61,17 +57,15 @@ const signup = async (req, res) => {
     });
 
     return res.status(200).json({
-      status: 20,
+      status: 200,
       data: {
-        message: "User created",
+        message: 'User created',
       },
     });
     //
   } catch (error) {
     console.error(error);
-    return res
-      .status(500)
-      .json({ status: 500, message: "Internal Server Error" });
+    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
   }
 };
 
