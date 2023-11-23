@@ -5,7 +5,8 @@ const nodemailer = require("nodemailer");
 const knex = require("../db");
 const UserModel = require("../db/models/User");
 
-const { JWT_SECRET, JWT_EXPIRY } = process.env;
+const { JWT_SECRET, JWT_EXPIRY, NODEMAILER_USER, NODEMAILER_PASS } =
+  process.env;
 
 const login = async (req, res) => {
   try {
@@ -78,11 +79,11 @@ const signup = async (req, res) => {
 };
 const resetPassword = async (req, res) => {
   try {
-    const { token } = req.header;
+    const resetToken = req.headers.authorization;
     const { newPassword } = req.body;
 
     const user = await knex(UserModel.tableName)
-      .where({ password: token })
+      .where({ reset_token: resetToken })
       .first();
 
     if (!user) {
@@ -90,12 +91,12 @@ const resetPassword = async (req, res) => {
         .status(404)
         .json({ status: 404, message: "Invalid or expired token" });
     }
-
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await knex(UserModel.tableName).where({ password: token }).update({
+    // Update the user's password and clear the reset token
+    await knex(UserModel.tableName).where({ reset_token: resetToken }).update({
       password: hashedPassword,
-      //reset_token: null,
+      reset_token: null,
     });
 
     return res
@@ -123,10 +124,10 @@ const sendResetEmail = async (req, res) => {
 
     await knex(UserModel.tableName)
       .where({ email })
-      .update({ password: resetToken });
+      .update({ reset_token: resetToken });
 
     const mailOptions = {
-      from: "kashifnazir795@gmail.com", // replace with your email
+      from: "kashifnazir795@gmail.com",
       to: email,
       subject: "Password Reset",
       text: `Click the following link to reset your password: http://localhost:3000/auth/reset/${resetToken}`,
@@ -135,8 +136,8 @@ const sendResetEmail = async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: "kashif.personel@gmail.com", // replace with your email
-        pass: "nfem ledg rzwo viaz", // replace with your email password
+        user: NODEMAILER_USER,
+        pass: NODEMAILER_PASS,
       },
     });
 

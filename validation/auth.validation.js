@@ -1,4 +1,4 @@
-const { validationResult, body, param } = require("express-validator");
+const { body, param, header } = require("express-validator");
 
 const loginValidation = () => [
   body("email", "invalid email").trim().isEmail(),
@@ -24,14 +24,21 @@ const signupValidation = () => [
     .withMessage("Password do not match"),
 ];
 const resetPasswordValidation = () => [
-  param("token").isUUID().withMessage("Invalid or expired token"),
+  (req, res, next) => {
+    if (!req.headers.authorization) {
+      return res.status(400).json({
+        error: "Invalid or expired token. Authorization header is missing.",
+      });
+    }
+    next();
+  },
   body("newPassword")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters"),
 ];
 
 const sendResetEmailValidation = () => [
-  body("email").isEmail().withMessage("Invalid email format"),
+  body("email", "invalid email").trim().isEmail(),
 ];
 module.exports = {
   signupValidation,
