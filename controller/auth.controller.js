@@ -98,7 +98,8 @@ const forgetPassword = async (req, res) => {
       return res.status(404).json({ status: 404, message: "User not found" });
     }
     const resetAttempts = user.password_reset_attempts;
-    const lastAttempt = user.password_reset_last_attempt;
+    const lastAttemptTimestamp = user.password_reset_last_attempt;
+    const lastAttempt = new Date(lastAttemptTimestamp).getTime(); // Convert to a numeric timestamp
     const currentTime = dayjs().valueOf();
 
     if (resetAttempts >= 3 && currentTime - lastAttempt < 24 * 60 * 60 * 1000) {
@@ -107,6 +108,8 @@ const forgetPassword = async (req, res) => {
         message: "Password reset attempts exceeded. Try again later.",
       });
     }
+    const formattedLastAttempt = new Date(currentTime).toISOString();
+
     const resetToken = uuidv4();
 
     await knex(UserModel.tableName)
@@ -114,7 +117,7 @@ const forgetPassword = async (req, res) => {
       .update({
         reset_token: resetToken,
         password_reset_attempts: resetAttempts + 1,
-        password_reset_last_attempt: currentTime,
+        password_reset_last_attempt: formattedLastAttempt,
       });
 
     const mailOptions = {
