@@ -5,7 +5,7 @@ const {
   login,
   signup,
   resetPassword,
-  sendResetEmail,
+  forgetPassword,
 } = require("../controller/auth.controller");
 const { verifyValidationResult } = require("../validation/index.validation.js");
 
@@ -13,22 +13,22 @@ const {
   signupValidation,
   loginValidation,
   resetPasswordValidation,
-  sendResetEmailValidation,
+  forgetPasswordValidation,
 } = require("../validation/auth.validation.js");
 
-router.post("/login", loginValidation(), verifyValidationResult, login);
 router.post("/signup", signupValidation(), verifyValidationResult, signup);
+router.post("/login", loginValidation(), verifyValidationResult, login);
+router.patch(
+  "/forget",
+  forgetPasswordValidation(),
+  verifyValidationResult,
+  forgetPassword
+);
 router.get(
-  "/reset",
+  "/reset/:token",
   resetPasswordValidation(),
   verifyValidationResult,
   resetPassword
-);
-router.post(
-  "/forget",
-  sendResetEmailValidation(),
-  verifyValidationResult,
-  sendResetEmail
 );
 
 module.exports = router;

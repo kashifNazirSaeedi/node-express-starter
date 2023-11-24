@@ -4,25 +4,35 @@ const { v4: uuidv4 } = require("uuid");
 const nodemailer = require("nodemailer");
 const knex = require("../db");
 const UserModel = require("../db/models/User");
+const dayjs = require("dayjs");
 
 const { JWT_SECRET, JWT_EXPIRY, NODEMAILER_USER, NODEMAILER_PASS } =
   process.env;
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.validatedData;
 
     const user = await knex(UserModel.tableName).where({ email }).first();
 
-    const IsValidPassword = bcrypt.compare(password, user.password);
+    const IsValidPassword = await bcrypt.compare(password, user.password);
+    console.log();
 
-    if (!user || !IsValidPassword) {
+    if (!user) {
       return res.status(401).json({
         status: 401,
         message: "wrong credentials",
       });
     }
-    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    if (!IsValidPassword) {
+      return res.status(401).json({
+        status: 401,
+        message: "wrong Password",
+      });
+    }
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRY,
+    });
 
     return res.status(201).json({
       status: 201,
@@ -77,57 +87,38 @@ const signup = async (req, res) => {
       .json({ status: 500, message: "Internal Server Error" });
   }
 };
-const resetPassword = async (req, res) => {
+
+const forgetPassword = async (req, res) => {
   try {
-    const resetToken = req.headers.authorization;
-    const { newPassword } = req.body;
-
-    const user = await knex(UserModel.tableName)
-      .where({ reset_token: resetToken })
-      .first();
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ status: 404, message: "Invalid or expired token" });
-    }
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update the user's password and clear the reset token
-    await knex(UserModel.tableName).where({ reset_token: resetToken }).update({
-      password: hashedPassword,
-      reset_token: null,
-    });
-
-    return res
-      .status(200)
-      .json({ status: 200, message: "Password reset successfully" });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ status: 500, message: "Internal Server Error" });
-  }
-};
-
-const sendResetEmail = async (req, res) => {
-  try {
-    const { email } = req.body;
+    const { email } = req.validatedData;
 
     const user = await knex(UserModel.tableName).where({ email }).first();
 
     if (!user) {
       return res.status(404).json({ status: 404, message: "User not found" });
     }
+    const resetAttempts = user.password_reset_attempts;
+    const lastAttempt = user.password_reset_last_attempt;
+    const currentTime = dayjs().valueOf();
 
+    if (resetAttempts >= 3 && currentTime - lastAttempt < 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        status: 400,
+        message: "Password reset attempts exceeded. Try again later.",
+      });
+    }
     const resetToken = uuidv4();
 
     await knex(UserModel.tableName)
       .where({ email })
-      .update({ reset_token: resetToken });
+      .update({
+        reset_token: resetToken,
+        password_reset_attempts: resetAttempts + 1,
+        password_reset_last_attempt: currentTime,
+      });
 
     const mailOptions = {
-      from: "kashifnazir795@gmail.com",
+      from: NODEMAILER_USER,
       to: email,
       subject: "Password Reset",
       text: `Click the following link to reset your password: http://localhost:3000/auth/reset/${resetToken}`,
@@ -161,9 +152,42 @@ const sendResetEmail = async (req, res) => {
   }
 };
 
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.validatedData;
+
+    const user = await knex(UserModel.tableName)
+      .where({ reset_token: token })
+      .first();
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "Invalid or expired token" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    console.log({ hashedPassword }, { token });
+
+    await knex(UserModel.tableName).where({ reset_token: token }).update({
+      password: hashedPassword,
+      reset_token: null,
+    });
+
+    return res
+      .status(200)
+      .json({ status: 200, message: "Password reset successfully" });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ status: 500, message: "Internal Server Error" });
+  }
+};
+
 module.exports = {
   login,
   signup,
   resetPassword,
-  sendResetEmail,
+  forgetPassword,
 };

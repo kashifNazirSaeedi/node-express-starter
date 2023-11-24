@@ -23,26 +23,21 @@ const signupValidation = () => [
     })
     .withMessage("Password do not match"),
 ];
+
 const resetPasswordValidation = () => [
-  (req, res, next) => {
-    if (!req.headers.authorization) {
-      return res.status(400).json({
-        error: "Invalid or expired token. Authorization header is missing.",
-      });
-    }
-    next();
-  },
+  param("token").notEmpty().withMessage("missing token"),
   body("newPassword")
     .isLength({ min: 6 })
     .withMessage("Password must be at least 6 characters"),
 ];
 
-const sendResetEmailValidation = () => [
+const forgetPasswordValidation = () => [
   body("email", "invalid email").trim().isEmail(),
 ];
+
 module.exports = {
   signupValidation,
   loginValidation,
   resetPasswordValidation,
-  sendResetEmailValidation,
+  forgetPasswordValidation,
 };
