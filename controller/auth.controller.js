@@ -1,33 +1,38 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { v4: uuidv4 } = require("uuid");
+const nodemailer = require("nodemailer");
+const knex = require("../db");
+const UserModel = require("../db/models/User");
+const dayjs = require("dayjs");
 
-const knex = require('../db');
-const UserModel = require('../db/models/User');
-const { JWT_SECRET, JWT_EXPIRY } = process.env;
+const { JWT_SECRET, JWT_EXPIRY, NODEMAILER_USER, NODEMAILER_PASS } =
+  process.env;
 
 const login = async (req, res) => {
   try {
     const { email, password } = req.validatedData;
 
-    const isUser = await knex(UserModel.tableName).where({ email }).first();
+    const user = await knex(UserModel.tableName).where({ email }).first();
 
-    if (!isUser) {
-      return res.status(400).json({ status: 400, message: 'Invalid Credentials' });
+    const IsValidPassword = await bcrypt.compare(password, user.password);
+    console.log();
+
+    if (!user) {
+      return res.status(401).json({
+        status: 401,
+        message: "wrong credentials",
+      });
     }
-
-    const isPasswordCorrect = await bcrypt.compare(password, isUser.password);
-
-    if (!isPasswordCorrect) {
-      return res.status(400).json({ status: 400, message: 'Invalid Credentials' });
+    if (!IsValidPassword) {
+      return res.status(401).json({
+        status: 401,
+        message: "wrong Password",
+      });
     }
-
-    const token = jwt.sign(
-      { id: isUser.id, first_name: isUser.first_name, last_name: isUser.last_name },
-      JWT_SECRET,
-      {
-        expiresIn: JWT_EXPIRY,
-      }
-    );
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, {
+      expiresIn: JWT_EXPIRY,
+    });
 
     return res.status(201).json({
       status: 201,
@@ -38,47 +43,154 @@ const login = async (req, res) => {
     //
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
+    return res
+      .status(500)
+      .json({ status: 500, message: "Internal Server Error" });
   }
 };
 
 const signup = async (req, res) => {
   try {
-    const { first_name, last_name, email, password, phone_number } = req.validatedData;
+    const { email, password, first_name, last_name, phone_number } = req.body;
 
-    const emailExists = await knex(UserModel.tableName).where({ email }).first();
+    const existingUser = await knex(UserModel.tableName)
+      .where({ email })
+      .first();
 
-    if (emailExists) {
-      return res.status(400).json({ status: 400, message: 'Email Already Exists' });
+    if (existingUser) {
+      return res.status(400).json({
+        status: 400,
+        message: "User with this email already exists",
+      });
     }
+    const hashPassword = await bcrypt.hash(password, 10);
 
-    const saltRounds = 10;
-    const hashPassword = await bcrypt.hash(password, saltRounds);
+    await knex(UserModel.tableName).insert({
+      email,
+      password: hashPassword,
+      first_name,
+      last_name,
+      phone_number,
+    });
 
-    const user = await knex(UserModel.tableName)
-      .insert({
-        first_name,
-        last_name,
-        email,
-        password: hashPassword,
-        phone_number,
-      })
-      .returning('*');
-
-    return res.status(201).json({
-      status: 201,
+    return res.status(200).json({
+      status: 200,
       data: {
-        userId: user[0].id,
+        message: "User created",
       },
     });
     //
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ status: 500, message: 'Internal Server Error' });
+    return res
+      .status(500)
+      .json({ status: 500, message: "Internal Server Error" });
+  }
+};
+
+const forgetPassword = async (req, res) => {
+  try {
+    const { email } = req.validatedData;
+
+    const user = await knex(UserModel.tableName).where({ email }).first();
+
+    if (!user) {
+      return res.status(404).json({ status: 404, message: "User not found" });
+    }
+    const resetAttempts = user.password_reset_attempts;
+    const lastAttemptTimestamp = user.password_reset_last_attempt;
+    const lastAttempt = new Date(lastAttemptTimestamp).getTime(); // Convert to a numeric timestamp
+    const currentTime = dayjs().valueOf();
+
+    if (resetAttempts >= 3 && currentTime - lastAttempt < 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        status: 400,
+        message: "Password reset attempts exceeded. Try again later.",
+      });
+    }
+    const formattedLastAttempt = new Date(currentTime).toISOString();
+
+    const resetToken = uuidv4();
+
+    await knex(UserModel.tableName)
+      .where({ email })
+      .update({
+        reset_token: resetToken,
+        password_reset_attempts: resetAttempts + 1,
+        password_reset_last_attempt: formattedLastAttempt,
+      });
+
+    const mailOptions = {
+      from: NODEMAILER_USER,
+      to: email,
+      subject: "Password Reset",
+      text: `Click the following link to reset your password: http://localhost:3000/auth/reset/${resetToken}`,
+    };
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: NODEMAILER_USER,
+        pass: NODEMAILER_PASS,
+      },
+    });
+
+    transporter.sendMail(mailOptions, (error) => {
+      if (error) {
+        console.error(error);
+        return res
+          .status(500)
+          .json({ status: 500, message: "Error sending reset email" });
+      }
+
+      return res
+        .status(200)
+        .json({ status: 200, message: "Reset email sent successfully" });
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ status: 500, message: "Internal Server Error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.validatedData;
+
+    const user = await knex(UserModel.tableName)
+      .where({ reset_token: token })
+      .first();
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: 404, message: "Invalid or expired token" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    console.log({ hashedPassword }, { token });
+
+    await knex(UserModel.tableName).where({ reset_token: token }).update({
+      password: hashedPassword,
+      reset_token: null,
+    });
+
+    return res
+      .status(200)
+      .json({ status: 200, message: "Password reset successfully" });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ status: 500, message: "Internal Server Error" });
   }
 };
 
 module.exports = {
   login,
   signup,
+  resetPassword,
+  forgetPassword,
 };
